@@ -1,3 +1,13 @@
+# Pytorch models
+*.pth 
+
+# Videos & images
+*.mp4 
+*.jpg
+
+# Tensorbaord
+*events* 
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
