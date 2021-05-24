@@ -332,32 +332,8 @@ class ProposalRejectionCell(nn.Module):
         # (bs * num_cell_h * num_cell_w, dim, glimpse_size, glimpse_size)
         o_att, alpha_att = self.glimpse_dec(z_what)
 
-        # Rejection
-        if phase_rejection and t > 0:
-            alpha_map_raw = spatial_transform(alpha_att, z_where, (bs * num_cell_h * num_cell_w, 1, img_h, img_w),
-                                              inverse=True)
-
-            alpha_map_proposed = (alpha_map_raw > 0.3).float()
-
-            alpha_map_prop = (alpha_map_prop > 0.1).float().view(bs, 1, 1, img_h, img_w) \
-                .expand(-1, num_cell_h * num_cell_w, -1, -1, -1).contiguous().view(-1, 1, img_h, img_w)
-
-            alpha_map_intersect = alpha_map_proposed * alpha_map_prop
-
-            explained_ratio = alpha_map_intersect.view(bs * num_cell_h * num_cell_w, -1).sum(1) / \
-                              (alpha_map_proposed.view(bs * num_cell_h * num_cell_w, -1).sum(1) + eps)
-
-            pres_mask = (explained_ratio < self.args.explained_ratio_threshold).view(bs, 1, num_cell_h, num_cell_w).float()
-
-            if self.args.phase_generate and t >= self.args.observe_frames:
-                pres_mask = pres_mask * 0 # in our case, reject all new discovery in generation
-            
-            if t >= 1:
-                pres_mask = pres_mask * 0 # in our case, reject everthing after the first frame
-            z_pres = z_pres * pres_mask
-
         # The following "if" is useful only if you don't have high-memery GPUs, better to remove it if you do
-        if self.training and phase_obj_num_contrain:
+        if phase_obj_num_contrain:
             z_pres = z_pres.view(bs, -1)
 
             z_pres_threshold = z_pres.sort(dim=1, descending=True)[0][torch.arange(bs), max_num_disc_obj]
@@ -404,11 +380,7 @@ class ProposalRejectionCell(nn.Module):
         kl_z_depth = kl_z_depth.view(-1, num_cell_h * num_cell_w, z_depth_dim)
         # (bs, dim, num_cell_h, num_cell_w)
         kl_z_where = kl_divergence(q_z_where, self.p_z_where) * z_pres_orgin
-        if phase_rejection and t > 0:
-            kl_z_pres = calc_kl_z_pres_bernoulli(z_pres_logits, self.prior_z_pres_prob * pres_mask +
-                                                 self.z_pres_masked_prior * (1 - pres_mask))
-        else:
-            kl_z_pres = calc_kl_z_pres_bernoulli(z_pres_logits, self.prior_z_pres_prob)
+        kl_z_pres = calc_kl_z_pres_bernoulli(z_pres_logits, self.prior_z_pres_prob)
 
         kl_z_pres = kl_z_pres.view(-1, num_cell_h * num_cell_w, z_pres_dim)
 
@@ -425,10 +397,7 @@ class ProposalRejectionCell(nn.Module):
             # (bs, dim, num_cell_h, num_cell_w)
             log_imp_where = (self.p_z_where.log_prob(z_where_origin) -
                              q_z_where.log_prob(z_where_origin)) * z_pres_orgin_binary
-            if phase_rejection and t > 0:
-                p_z_pres = self.prior_z_pres_prob * pres_mask + self.z_pres_masked_prior * (1 - pres_mask)
-            else:
-                p_z_pres = self.prior_z_pres_prob
+            p_z_pres = self.prior_z_pres_prob
 
             z_pres_binary = (z_pres > 0.5).float()
 

@@ -34,7 +34,7 @@ class PropagationCell(nn.Module):
         )
 
         # z depth net
-        z_depth_transit_net_input_dim = nf + z_what_dim
+        z_depth_transit_net_input_dim = nf + z_what_dim + z_depth_dim
 
         self.z_depth_transit_net = nn.Sequential(
             nn.Linear(z_depth_transit_net_input_dim, nf),
@@ -63,7 +63,7 @@ class PropagationCell(nn.Module):
         )
 
         infer_graph_struct_node_dim = z_where_scale_dim + z_where_shift_dim + \
-                                z_pres_dim + z_what_dim + z_where_bias_dim 
+                                z_pres_dim + z_what_dim + z_where_bias_dim + z_depth_dim
         # infer node type
         self.infer_node_type = PropNet(
             node_dim_in=z_what_dim,
@@ -89,7 +89,7 @@ class PropagationCell(nn.Module):
 
         # object transit graph nets
         object_transit_inp_dim = z_where_scale_dim + z_where_shift_dim + z_pres_dim + \
-                                z_what_dim + z_where_bias_dim + action_dim
+                                z_what_dim + z_where_bias_dim + z_depth_dim + action_dim
 
         self.object_transit_net = PropNet(
             node_dim_in=object_transit_inp_dim,
@@ -100,6 +100,19 @@ class PropagationCell(nn.Module):
             edge_type_num=2,
             pstep=2, # no batchnorm and no propagation in!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             batch_norm=1)
+
+        self.object_transit_mlp_net = nn.Sequential(
+            nn.Linear(object_transit_inp_dim, nf),
+            nn.CELU(),
+            nn.BatchNorm1d(nf),
+            nn.Linear(nf, nf),
+            nn.CELU(),
+            nn.BatchNorm1d(nf),
+            nn.Linear(nf, nf),
+            nn.CELU(),
+            nn.BatchNorm1d(nf),
+            nn.Linear(nf, nf),
+        )
 
         self.glimpse_dec_net = glimpse_dec_net
         self.z_what_net = z_what_net
@@ -144,7 +157,7 @@ class PropagationCell(nn.Module):
 
         # node_rep: B x N x infer_graph_struct_node_dims
         obj_rep = torch.cat(
-            [z_where_pre, z_pres_pre, z_what_pre, z_where_bias_pre],
+            [z_where_pre, z_pres_pre, z_what_pre, z_where_bias_pre, z_depth_pre],
             dim=2
         )
 
@@ -158,7 +171,7 @@ class PropagationCell(nn.Module):
         # expanded_action: bs x max_num_obj x action_dim
         expanded_node_type = self.node_type.unsqueeze(2).expand(-1,-1,action_dim).contiguous().to(device)
         expanded_action = act.unsqueeze(1).expand(-1,max_num_obj,-1).contiguous().to(device)
-
+        
         # edge_type_logits: bs x max_num_obj x 2    
         edge_type_logits = self.infer_edge_type(node_rep=obj_rep, ignore_node=True)
 
@@ -170,7 +183,7 @@ class PropagationCell(nn.Module):
         expanded_action = expanded_action * expanded_node_type
 
         obj_act_inp = torch.cat(
-            [z_where_pre, z_pres_pre, z_what_pre, z_where_bias_pre, expanded_action],
+            [z_where_pre, z_pres_pre, z_what_pre, z_where_bias_pre, z_depth_pre, expanded_action],
             dim=2
         )
         object_transit_out = self.object_transit_net(
@@ -179,6 +192,9 @@ class PropagationCell(nn.Module):
             edge_type,
             start_idx=edge_st_idx,
             ignore_edge=True)
+
+        object_transit_out = self.object_transit_mlp_net(obj_act_inp.view(bns, -1).contiguous()).view(bs,max_num_obj,-1)
+        #import pdb; pdb.set_trace()
 
         # z_where transition
         z_where_transit_bias_net_inp = torch.cat(
@@ -228,7 +244,7 @@ class PropagationCell(nn.Module):
         z_what_from_transit_std = F.softplus(z_what_from_transit_std)
         z_what_transit_dist = Normal(z_what_from_transit_mean, z_what_from_transit_std)
 
-        if True: #self.args.phase_generate and t >= self.args.observe_frames:
+        if True or self.args.phase_generate and t >= self.args.observe_frames:
             z_what_mean = z_what_from_transit_mean
             z_what_std = z_what_from_transit_std
             z_what_dist = z_what_transit_dist
@@ -244,10 +260,12 @@ class PropagationCell(nn.Module):
             z_what_dist = Normal(z_what_mean, z_what_std)
 
         z_what = z_what_dist.rsample()
+       
 
         # z depth transit
+        z_depth_pre = z_depth_pre.view(bns, -1).contiguous()
         z_depth_transit_net_inp = torch.cat(
-            [object_transit_out, z_what],
+            [object_transit_out, z_what, z_depth_pre],
             dim=1
         )
         z_depth_mean, z_depth_std = self.z_depth_transit_net(z_depth_transit_net_inp).chunk(2, -1)
@@ -278,7 +296,7 @@ class PropagationCell(nn.Module):
 
         # (batch_size_t, 1, glimpse_size, glimpse_size)
         importance_map = alpha_att_hat * torch.sigmoid(-z_depth).view(-1, 1, 1, 1)
-
+        #import pdb; pdb.set_trace()
         # (batch_size_t, 1, img_h, img_w)
         importance_map_full_res = spatial_transform(importance_map, z_where, (bns, 1, img_h, img_w),
                                                     inverse=True)

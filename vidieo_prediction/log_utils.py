@@ -116,6 +116,7 @@ def log_summary(args, writer, imgs, y_seq, global_step, log_disc_list,
                                              global_step)
 
         num_cell_h, num_cell_w = cfg['num_cell_h'], cfg['num_cell_w']
+        
         log_disc = {
             'z_what': log_disc_list[j]['z_what'].view(-1, num_cell_h * num_cell_w, z_what_dim),
             'z_where_scale':

@@ -154,7 +154,6 @@ class BgDecoder(nn.Module):
         o = self.dec(x.reshape(-1, bg_what_dim, 1, 1))
         bg = torch.sigmoid(self.bg_dec(o))
         # alpha_map = torch.sigmoid(self.alpha_dec(o))
-
         # return bg, alpha_map
         return bg
 

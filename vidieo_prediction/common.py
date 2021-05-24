@@ -20,7 +20,7 @@ action_dim = 4
 
 DEBUG = True
 
-phase_obj_num_contrain = False
+phase_obj_num_contrain = True
 phase_rejection = True
 
 z_where_bias_dim = 4
@@ -39,7 +39,7 @@ cfg = {
     'phase_generate': False,
     'phase_nll': False,
     'gen_disc_pres_probs': 0.1,
-    'observe_frames': 2,
+    'observe_frames': 1,
     'size_anc': 0.4,
     'var_s': 0.3,
     'ratio_anc': 1.0,

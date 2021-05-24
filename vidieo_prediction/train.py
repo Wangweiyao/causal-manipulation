@@ -95,9 +95,7 @@ def main(args):
             kl_z_bg = kl_z_bg.mean(0)
             kl_edge_type = kl_edge_type.mean(0)
 
-            kl_weight = 1
-
-            total_loss = - log_like #+ kl_weight * (kl_z_what + kl_z_where + kl_z_depth + kl_z_pres + kl_z_bg + kl_edge_type)
+            total_loss = - log_like + kl_z_what + kl_z_where + kl_z_depth + kl_z_pres + kl_z_bg + kl_edge_type
 
             optimizer.zero_grad()
             total_loss.backward()
